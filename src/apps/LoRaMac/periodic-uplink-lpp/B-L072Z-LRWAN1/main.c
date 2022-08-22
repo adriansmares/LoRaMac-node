@@ -84,7 +84,7 @@
 /*!
  * Default datarate
  *
- * \remark Please note that LORAWAN_DEFAULT_DATARATE is used only when ADR is disabled 
+ * \remark Please note that LORAWAN_DEFAULT_DATARATE is used only when ADR is disabled
  */
 #define LORAWAN_DEFAULT_DATARATE                    DR_0
 
@@ -129,16 +129,18 @@ static uint8_t AppDataBuffer[LORAWAN_APP_DATA_BUFFER_MAX_SIZE];
  * User application data structure
  */
 static LmHandlerAppData_t AppData =
-{
-    .Buffer = AppDataBuffer,
-    .BufferSize = 0,
-    .Port = 0,
+    {
+        .Buffer = AppDataBuffer,
+        .BufferSize = 0,
+        .Port = 0,
 };
 
 /*!
  * Specifies the state of the application LED
  */
-static bool AppLedStateOn = false;
+
+static uint8_t AppLedState = 0;
+static float AppTemperature = 0;
 
 /*!
  * Timer to handle the application data transmission duty cycle
@@ -214,47 +216,47 @@ static void OnLed3TimerEvent( void* context );
 static void OnLedBeaconTimerEvent( void* context );
 
 static LmHandlerCallbacks_t LmHandlerCallbacks =
-{
-    .GetBatteryLevel = BoardGetBatteryLevel,
-    .GetTemperature = NULL,
-    .GetRandomSeed = BoardGetRandomSeed,
-    .OnMacProcess = OnMacProcessNotify,
-    .OnNvmDataChange = OnNvmDataChange,
-    .OnNetworkParametersChange = OnNetworkParametersChange,
-    .OnMacMcpsRequest = OnMacMcpsRequest,
-    .OnMacMlmeRequest = OnMacMlmeRequest,
-    .OnJoinRequest = OnJoinRequest,
-    .OnTxData = OnTxData,
-    .OnRxData = OnRxData,
+    {
+        .GetBatteryLevel = BoardGetBatteryLevel,
+        .GetTemperature = NULL,
+        .GetRandomSeed = BoardGetRandomSeed,
+        .OnMacProcess = OnMacProcessNotify,
+        .OnNvmDataChange = OnNvmDataChange,
+        .OnNetworkParametersChange = OnNetworkParametersChange,
+        .OnMacMcpsRequest = OnMacMcpsRequest,
+        .OnMacMlmeRequest = OnMacMlmeRequest,
+        .OnJoinRequest = OnJoinRequest,
+        .OnTxData = OnTxData,
+        .OnRxData = OnRxData,
     .OnClassChange= OnClassChange,
-    .OnBeaconStatusChange = OnBeaconStatusChange,
-    .OnSysTimeUpdate = OnSysTimeUpdate,
+        .OnBeaconStatusChange = OnBeaconStatusChange,
+        .OnSysTimeUpdate = OnSysTimeUpdate,
 };
 
 static LmHandlerParams_t LmHandlerParams =
-{
-    .Region = ACTIVE_REGION,
-    .AdrEnable = LORAWAN_ADR_STATE,
-    .IsTxConfirmed = LORAWAN_DEFAULT_CONFIRMED_MSG_STATE,
-    .TxDatarate = LORAWAN_DEFAULT_DATARATE,
-    .PublicNetworkEnable = LORAWAN_PUBLIC_NETWORK,
-    .DutyCycleEnabled = LORAWAN_DUTYCYCLE_ON,
-    .DataBufferMaxSize = LORAWAN_APP_DATA_BUFFER_MAX_SIZE,
-    .DataBuffer = AppDataBuffer,
-    .PingSlotPeriodicity = REGION_COMMON_DEFAULT_PING_SLOT_PERIODICITY,
+    {
+        .Region = ACTIVE_REGION,
+        .AdrEnable = LORAWAN_ADR_STATE,
+        .IsTxConfirmed = LORAWAN_DEFAULT_CONFIRMED_MSG_STATE,
+        .TxDatarate = LORAWAN_DEFAULT_DATARATE,
+        .PublicNetworkEnable = LORAWAN_PUBLIC_NETWORK,
+        .DutyCycleEnabled = LORAWAN_DUTYCYCLE_ON,
+        .DataBufferMaxSize = LORAWAN_APP_DATA_BUFFER_MAX_SIZE,
+        .DataBuffer = AppDataBuffer,
+        .PingSlotPeriodicity = REGION_COMMON_DEFAULT_PING_SLOT_PERIODICITY,
 };
 
 static LmhpComplianceParams_t LmhpComplianceParams =
-{
-    .FwVersion.Value = FIRMWARE_VERSION,
-    .OnTxPeriodicityChanged = OnTxPeriodicityChanged,
-    .OnTxFrameCtrlChanged = OnTxFrameCtrlChanged,
-    .OnPingSlotPeriodicityChanged = OnPingSlotPeriodicityChanged,
+    {
+        .FwVersion.Value = FIRMWARE_VERSION,
+        .OnTxPeriodicityChanged = OnTxPeriodicityChanged,
+        .OnTxFrameCtrlChanged = OnTxFrameCtrlChanged,
+        .OnPingSlotPeriodicityChanged = OnPingSlotPeriodicityChanged,
 };
 
 /*!
  * Indicates if LoRaMacProcess call is pending.
- * 
+ *
  * \warning If variable is equal to 0 then the MCU can be set in low power mode
  */
 static volatile uint8_t IsMacProcessPending = 0;
@@ -302,7 +304,7 @@ int main( void )
     const Version_t appVersion = { .Value = FIRMWARE_VERSION };
     const Version_t gitHubVersion = { .Value = GITHUB_VERSION };
     DisplayAppInfo( "periodic-uplink-lpp", 
-                    &appVersion,
+                   &appVersion,
                     &gitHubVersion );
 
     if ( LmHandlerInit( &LmHandlerCallbacks, &LmHandlerParams ) != LORAMAC_HANDLER_SUCCESS )
@@ -402,11 +404,16 @@ static void OnRxData( LmHandlerAppData_t* appData, LmHandlerRxParams_t* params )
     {
     case 1: // The application LED can be controlled on port 1 or 2
     case LORAWAN_APP_PORT:
-        {
-            AppLedStateOn = appData->Buffer[0] & 0x01;
-            GpioWrite( &Led4, ( ( AppLedStateOn & 0x01 ) != 0 ) ? 1 : 0 );
-        }
-        break;
+    {
+        const uint8_t ledState = appData->Buffer[0] & 0x01;
+        const uint8_t temperature = appData->Buffer[1] & 0xFF;
+
+        GpioWrite(&Led4, ledState);
+
+        AppLedState = ledState;
+        AppTemperature = temperature;
+    }
+    break;
     default:
         break;
     }
@@ -422,11 +429,11 @@ static void OnClassChange( DeviceClass_t deviceClass )
 
     // Inform the server as soon as possible that the end-device has switched to ClassB
     LmHandlerAppData_t appData =
-    {
-        .Buffer = NULL,
-        .BufferSize = 0,
-        .Port = 0,
-    };
+        {
+            .Buffer = NULL,
+            .BufferSize = 0,
+            .Port = 0,
+        };
     LmHandlerSend( &appData, LORAMAC_HANDLER_UNCONFIRMED_MSG );
 }
 
@@ -434,21 +441,21 @@ static void OnBeaconStatusChange( LoRaMacHandlerBeaconParams_t* params )
 {
     switch( params->State )
     {
-        case LORAMAC_HANDLER_BEACON_RX:
-        {
+    case LORAMAC_HANDLER_BEACON_RX:
+    {
             TimerStart( &LedBeaconTimer );
-            break;
-        }
-        case LORAMAC_HANDLER_BEACON_LOST:
-        case LORAMAC_HANDLER_BEACON_NRX:
-        {
+        break;
+    }
+    case LORAMAC_HANDLER_BEACON_LOST:
+    case LORAMAC_HANDLER_BEACON_NRX:
+    {
             TimerStop( &LedBeaconTimer );
-            break;
-        }
-        default:
-        {
-            break;
-        }
+        break;
+    }
+    default:
+    {
+        break;
+    }
     }
 
     DisplayBeaconUpdate( params );
@@ -480,14 +487,20 @@ static void PrepareTxFrame( void )
 
     AppData.Port = LORAWAN_APP_PORT;
 
-    CayenneLppReset( );
-    CayenneLppAddDigitalInput( channel++, AppLedStateOn );
-    CayenneLppAddAnalogInput( channel++, BoardGetBatteryLevel( ) * 100 / 254 );
+    CayenneLppReset();
+    CayenneLppAddDigitalOutput(channel++, AppLedState);
+    CayenneLppAddTemperature(channel++, AppTemperature);
 
     CayenneLppCopy( AppData.Buffer );
     AppData.BufferSize = CayenneLppGetSize( );
 
-    if( LmHandlerSend( &AppData, LmHandlerParams.IsTxConfirmed ) == LORAMAC_HANDLER_SUCCESS )
+    LmHandlerMsgTypes_t txConfirmed = LORAMAC_HANDLER_UNCONFIRMED_MSG;
+    if (randr(1, 100) < 15)
+    {
+        txConfirmed = LORAMAC_HANDLER_CONFIRMED_MSG;
+    }
+
+    if (LmHandlerSend(&AppData, txConfirmed) == LORAMAC_HANDLER_SUCCESS)
     {
         // Switch LED 1 ON
         GpioWrite( &Led1, 1 );
@@ -502,17 +515,17 @@ static void StartTxProcess( LmHandlerTxEvents_t txEvent )
     default:
         // Intentional fall through
     case LORAMAC_HANDLER_TX_ON_TIMER:
-        {
-            // Schedule 1st packet transmission
+    {
+        // Schedule 1st packet transmission
             TimerInit( &TxTimer, OnTxTimerEvent );
             TimerSetValue( &TxTimer, TxPeriodicity );
             OnTxTimerEvent( NULL );
-        }
-        break;
+    }
+    break;
     case LORAMAC_HANDLER_TX_ON_EVENT:
-        {
-        }
-        break;
+    {
+    }
+    break;
     }
 }
 
