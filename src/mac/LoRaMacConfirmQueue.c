@@ -296,7 +296,7 @@ void LoRaMacConfirmQueueHandleCb( MlmeConfirm_t* mlmeConfirm )
 {
     uint8_t nbElements = ConfirmQueueCtx.Nvm.MlmeConfirmQueueCnt;
     bool readyToHandle = false;
-    MlmeConfirmQueue_t mlmeConfirmToStore;
+    MlmeConfirmQueue_t mlmeConfirmToStore = {0};
 
     for( uint8_t i = 0; i < nbElements; i++ )
     {
