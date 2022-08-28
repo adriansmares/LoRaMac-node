@@ -127,6 +127,15 @@ SecureElementStatus_t SecureElementInit( SecureElementNvmData_t* nvm )
 #endif
 #endif
 
+    if( status != LR11XX_CRYPTO_STATUS_SUCCESS )
+    {
+        return ( SecureElementStatus_t ) status;
+    }
+
+    const lr11xx_crypto_key_t empty_key = { 0 };
+    lr11xx_crypto_set_key( radio_context, &status,
+                          convert_key_id_from_se_to_lr11xx( SLOT_RAND_ZERO_KEY ), empty_key );
+
     return ( SecureElementStatus_t ) status;
 }
 
@@ -213,6 +222,13 @@ SecureElementStatus_t SecureElementAesEncrypt( uint8_t* buffer, uint16_t size, K
     if( ( buffer == NULL ) || ( encBuffer == NULL ) )
     {
         return SECURE_ELEMENT_ERROR_NPE;
+    }
+
+    if( keyID == SLOT_RAND_ZERO_KEY )
+    {
+        lr11xx_crypto_aes_encrypt( radio_context, ( lr11xx_crypto_status_t* ) &status,
+                                  convert_key_id_from_se_to_lr11xx( keyID ), buffer, size, encBuffer );
+        return status;
     }
 
     lr11xx_crypto_aes_encrypt_01( radio_context, ( lr11xx_crypto_status_t* ) &status,
